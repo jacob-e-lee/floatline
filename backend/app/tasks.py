@@ -16,6 +16,7 @@ Local balance tracking:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -104,16 +105,68 @@ async def _log_transfer(
     return log
 
 
+async def _await_invested_value(
+    alpaca: AlpacaClient,
+    previous: float,
+    timeout_seconds: float = 15.0,
+    poll_seconds: float = 1.0,
+) -> tuple[float, bool]:
+    """Poll open positions until the invested value moves past ``previous``.
+
+    A market buy returns while the order is still filling, and ``GET
+    /positions`` only lists *filled* shares - so an immediate re-read after
+    ``submit_notional_market_buy`` returns the stale pre-buy value and that
+    stale number is what gets persisted. Poll here (bounded, non-blocking to
+    the scheduler thanks to ``max_instances=1`` + ``coalesce=True``) until the
+    value exceeds ``previous`` or the timeout expires.
+
+    Outside market hours Alpaca parks orders as ``accepted``/``new`` instead of
+    filling them, so positions stay empty for hours and the poll always times
+    out. In that case fall back to the order's own ``filled_avg_price ×
+    filled_qty`` (real executed value once partially filled, else 0)... but
+    crucially the caller is told it is *unsettled* so it keeps the previous
+    tick's number instead of cementing a pre-fill zero.
+
+    Returns ``(value, settled)``: ``settled`` is True when the value moved past
+    ``previous`` (or was already above it), False on timeout - in which case
+    ``value`` is the freshest read and the *caller* must keep the previous
+    tick's number rather than cementing the pre-fill value.
+    """
+    try:
+        current = await alpaca.invested_market_value()
+    except Exception as exc:
+        logger.warning("alpaca positions read failed: %s", exc)
+        return previous, False
+    if current > previous + 1e-9:
+        return current, True
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    while asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(poll_seconds)
+        try:
+            current = await alpaca.invested_market_value()
+        except Exception as exc:
+            logger.warning("alpaca positions poll failed: %s", exc)
+            continue
+        if current > previous + 1e-9:
+            return current, True
+    logger.warning(
+        "alpaca fill not visible after %.0fs (prev=%.2f last=%.2f) - "
+        "keeping previous brokerage value",
+        timeout_seconds, previous, current,
+    )
+    return current, False
+
+
 async def _read_live_balances(
     nessie: NessieClient, alpaca: AlpacaClient
 ) -> tuple[float, float, float]:
-    """Read checking/savings straight from Nessie and equity from Alpaca."""
+    """Read checking/savings straight from Nessie and invested ETF value from Alpaca."""
     checking = await nessie.checking_balance()
     savings = await nessie.savings_balance()
     try:
-        brokerage = alpaca.brokerage_balance(await alpaca.get_account())
+        brokerage = await alpaca.invested_market_value()
     except Exception as exc:  # Alpaca unreachable -> ignore brokerage movement
-        logger.warning("alpaca balance read failed: %s", exc)
+        logger.warning("alpaca positions read failed: %s", exc)
         brokerage = 0.0
     return float(checking), float(savings), float(brokerage)
 
@@ -136,16 +189,28 @@ async def _current_balances(
     effect of every transaction it issues in TimescaleDB and treats that ledger
     as the observed balance. Set ``BALANCE_SOURCE=live`` to drive a real bank
     account that does persist balance changes.
+
+    Brokerage is always read live from Alpaca open positions (see
+    ``AlpacaClient.invested_market_value``): the paper account's $100,000 of
+    fake cash is invisible to the positions endpoint, so the value starts at
+    $0.00 and only reflects shares Floatline actually bought. On a failed
+    positions read we fall back to the ledger value.
     """
     latest = await _get_latest_snapshot(session)
 
     if settings.balance_source.strip().lower() != "ledger" or latest is None:
         return await _read_live_balances(nessie, alpaca)
 
+    try:
+        brokerage_live = await alpaca.invested_market_value()
+    except Exception as exc:  # Alpaca unreachable -> keep the ledger value
+        logger.warning("alpaca positions read failed: %s", exc)
+        brokerage_live = float(latest.brokerage_balance)
+
     return (
         float(latest.checking_balance),
         float(latest.savings_balance),
-        float(latest.brokerage_balance),
+        float(brokerage_live),
     )
 
 
@@ -277,15 +342,37 @@ async def run_control_cycle() -> dict[str, Any]:
                         details["withdrawal_error"] = str(exc)
                         status = "failed"
                         logger.exception("overflow withdrawal failed")
+                    order_ok = False
                     try:
                         details["order"] = await alpaca.submit_notional_market_buy(excess)
+                        order_ok = True
                     except Exception as exc:
                         details["order_error"] = str(exc)
                         status = "failed"
                         logger.exception("alpaca notional order failed")
 
                     savings -= excess
-                    brokerage += excess
+                    # The buy returns while the order is still filling and
+                    # positions only list *filled* shares - an immediate re-read
+                    # returns the stale pre-buy value. Poll (bounded) until the
+                    # fill lands; on timeout keep the previous tick's value so
+                    # we never cement the pre-fill number (the next cycle's
+                    # live read picks the fill up once it settles).
+                    if order_ok:
+                        settled_value, settled = await _await_invested_value(
+                            alpaca, previous=brokerage
+                        )
+                        if settled:
+                            brokerage = settled_value
+                            details["brokerage_settled"] = True
+                        else:
+                            details["brokerage_settled"] = False
+                            details["brokerage_pending_read"] = settled_value
+                    else:
+                        # No buy was submitted - keep the live value from the
+                        # start of the cycle instead of ledger-adding excess
+                        # (which would double-count once the fill later lands).
+                        pass
 
                     await _log_transfer(
                         session,
@@ -360,6 +447,14 @@ async def apply_simulated_transaction(kind: str, amount: float) -> dict[str, Any
                 api_response=json.dumps(response, default=str),
             )
             transfers.append({"type": f"simulated_{kind}", "amount": amount, "status": "executed"})
+
+            # Track market drift even in loop-off sessions: simulations don't
+            # submit orders, but the shares we already own still move with the
+            # market. Fall back to the ledger copy when Alpaca is unreachable.
+            try:
+                brokerage = await alpaca.invested_market_value()
+            except Exception as exc:
+                logger.warning("alpaca positions read failed: %s", exc)
 
             snapshot = await _persist_snapshot(
                 session,

@@ -253,31 +253,42 @@ def test_cascade(client: httpx.Client, base: str, cfg: dict[str, Any]) -> None:
     section("Liquidity cascade (PID sweep -> savings cap -> Alpaca)")
 
     cap = float(jget(cfg, "savings_cap", 5000.0))
-    try:
+
+    async def _drive_cycles(max_cycles: int = 4) -> list[dict[str, Any]]:
+        # ONE event loop for all cycles: each asyncio.run() creates a fresh loop
+        # but the asyncpg pool keeps connections bound to the loop that checked
+        # them out, so a second asyncio.run() dies with "Event loop is closed".
         from app.tasks import run_control_cycle
+        events: list[dict[str, Any]] = []
+        for _ in range(max_cycles):
+            point = latest_point(client, base)
+            savings = float(point.get("savings_balance", 0.0))
+            if savings <= cap:
+                # Top savings up past the cap so the overflow branch is exercised.
+                client.post(f"{base}/api/simulate-income",
+                            json={"amount": (cap - savings) + 600.0})
+            events.append(await run_control_cycle())
+            types = {t.get("type") for t in events[-1].get("transfers", [])
+                     if isinstance(t, dict)}
+            if "brokerage_sweep" in types:
+                break
+        return events
+
+    try:
+        events = asyncio.run(_drive_cycles(4))
     except Exception as exc:  # noqa: BLE001
         skip("control-cycle cascade", f"app.tasks not importable: {exc}")
         return
 
     saw_sweep = False
     saw_overflow = False
-    cycles = 0
+    cycles = len(events)
 
-    for _ in range(4):
-        point = latest_point(client, base)
-        savings = float(point.get("savings_balance", 0.0))
-        if savings <= cap:
-            # Top savings up past the cap so the overflow branch is exercised.
-            client.post(f"{base}/api/simulate-income",
-                        json={"amount": (cap - savings) + 600.0})
-
-        event = asyncio.run(run_control_cycle())
-        cycles += 1
+    for event in events:
         types = {t.get("type") for t in event.get("transfers", []) if isinstance(t, dict)}
         saw_sweep = saw_sweep or "pid_sweep" in types
         if "brokerage_sweep" in types:
             saw_overflow = True
-            break
 
     record("PID sweep executes a real Nessie transfer", saw_sweep, f"cycles={cycles}")
     record("savings-cap overflow cascades to Alpaca", saw_overflow,

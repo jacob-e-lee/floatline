@@ -26,25 +26,36 @@ class AlpacaClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def get_account(self) -> dict[str, Any]:
-        """GET /account -> account info (cash, portfolio_value, ...)."""
-        resp = await self._client.get("/account")
-        resp.raise_for_status()
-        return resp.json()
-
-    def brokerage_balance(self, account: dict[str, Any]) -> float:
-        for key in ("portfolio_value", "cash"):
-            if key in account:
-                try:
-                    return float(account[key])
-                except (TypeError, ValueError):
-                    continue
-        return 0.0
-
     async def get_positions(self) -> list[dict[str, Any]]:
         resp = await self._client.get("/positions")
         resp.raise_for_status()
         return resp.json()
+
+    async def invested_market_value(self) -> float:
+        """Sum of the market values of all open positions (GET /positions).
+
+        Why NOT GET /account (portfolio_value / equity): the Alpaca paper
+        account is permanently seeded with $100,000 of fake cash that cannot
+        be deposited into via the API. A sweep merely converts that fake cash
+        into shares, so account equity never reflects anything Floatline did.
+        Tracking only the market value of the shares we actually own starts
+        at $0.00 (no positions yet) and grows with every sweep - which is the
+        number the dashboard should plot as the brokerage balance.
+        """
+        total = 0.0
+        for position in await self.get_positions():
+            try:
+                total += float(position.get("market_value", 0.0))
+            except (TypeError, ValueError):
+                continue
+        return round(total, 2)
+
+    async def get_order(self, order_id: str) -> dict[str, Any]:
+        """GET /orders/{id} - poll a single order's fill status."""
+        resp = await self._client.get(f"/orders/{order_id}")
+        resp.raise_for_status()
+        data = resp.json()
+        return data if isinstance(data, dict) else {"_raw": data}
 
     async def submit_notional_market_buy(self, notional: float, symbol: str | None = None) -> dict[str, Any]:
         """POST /v2/orders - dollar-amount market buy into the configured symbol."""
