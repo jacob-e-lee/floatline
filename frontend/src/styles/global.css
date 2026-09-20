@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Floatline light theme - clean, approachable financial aesthetic.
+   Flat surfaces (no shadows), restrained corners, one trust-blue accent.
+   Tailwind 4 is configured entirely from CSS (no tailwind.config.js needed).
+   --------------------------------------------------------------------------- */
+@theme {
+  --color-canvas: #f8fafc;
+  --color-panel-border: #e2e8f0;
+  --color-accent: #2563eb;
+  --color-checking: #2563eb;
+  --color-savings: #059669;
+  --color-brokerage: #7c3aed;
+  --font-mono-stack: "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, monospace;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  background-color: var(--color-canvas);
+  color: #0f172a;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numeric readouts line up nicely in a monospaced face. */
+.tabular {
+  font-family: var(--font-mono-stack);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Flat panel: white surface, hairline border, modest corner. No shadow. */
+.panel {
+  background-color: #ffffff;
+  border: 1px solid var(--color-panel-border);
+  border-radius: 0.5rem;
+}
+
+.pulse-dot {
+  animation: pulse-dot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Recharts tooltip: white surface to match the panels. */
+.recharts-default-tooltip {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 0.375rem !important;
+}
+
+.recharts-tooltip-label {
+  color: #64748b !important;
+}
+

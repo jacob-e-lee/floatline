@@ -1,0 +1,27 @@
+---
+import "../styles/global.css";
+import Dashboard from "../components/Dashboard.tsx";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <meta
+      name="description"
+      content="Floatline - an autonomous liquidity management engine that pins a checking account to a target setpoint using a PID controller."
+    />
+    <title>Floatline | Autonomous Liquidity Engine</title>
+  </head>
+  <body class="min-h-screen antialiased">
+    <!--
+      The dashboard is the ONLY interactive island. Everything it shows is
+      mirrored from the FastAPI backend (source of truth = TimescaleDB), so no
+      client-side state library is required.
+    -->
+    <Dashboard client:load />
+  </body>
+</html>

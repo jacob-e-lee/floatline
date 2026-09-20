@@ -1,0 +1,62 @@
+# Floatline - Caddy reverse proxy / auto-SSL (production, Vultr)
+#
+# Serves the compiled Astro dashboard and proxies the FastAPI routes.
+#
+# WHY `handle` BLOCKS: Caddy sorts directives by a fixed default order in which
+# `try_files` runs BEFORE `reverse_proxy`. A bare `try_files {path} /index.html`
+# would therefore rewrite an /api/* request to /index.html, and the
+# `reverse_proxy /api/*` matcher would never fire - every API call would return
+# the SPA's HTML instead of JSON. `handle` blocks are mutually exclusive and are
+# evaluated in the order written, so the API routes always win.
+#
+# Local dev does NOT use this file: run the Astro dev server + uvicorn instead
+# (see scripts/dev.py). For local Docker testing use Caddyfile.local.
+
+{
+	auto_https on
+	email you@floatline.dev
+	acme_ca https://acme-v02.api.letsencrypt.org/directory
+	# While testing first deploys, prefer the staging CA so a failure cannot
+	# consume your Let's Encrypt rate limit:
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+floatline.biz {
+	encode gzip
+
+	log {
+		output stdout
+		format json
+	}
+
+	# --- REST API (FastAPI is mounted under /api) --------------------------
+	handle /api/* {
+		reverse_proxy fastapi_web:8000
+	}
+
+	# --- FastAPI's own docs (these live at the server root) ---------------
+	handle /docs* {
+		reverse_proxy fastapi_web:8000
+	}
+	handle /redoc* {
+		reverse_proxy fastapi_web:8000
+	}
+	handle /openapi.json {
+		reverse_proxy fastapi_web:8000
+	}
+
+	# --- Friendlier single health URL for uptime monitors ------------------
+	# (rewrite needs an explicit matcher, else /api/health is read as the matcher)
+	handle /health {
+		rewrite * /api/health
+		reverse_proxy fastapi_web:8000
+	}
+
+	# --- Static Astro dashboard, with SPA fallback -------------------------
+	# try_files is scoped INSIDE this handle so it can never touch /api/*.
+	handle {
+		root * /usr/share/caddy
+		try_files {path} /index.html
+		file_server
+	}
+}

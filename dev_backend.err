@@ -1,0 +1,18 @@
+INFO:     Started server process [6828]
+INFO:     Waiting for application startup.
+2026-09-19 20:07:26,519 INFO     floatline.main :: database ready (tables + TimescaleDB hypertables)
+2026-09-19 20:07:26,523 INFO     apscheduler.scheduler :: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-19 20:07:26,526 INFO     apscheduler.scheduler :: Added job "Floatline PID control loop" to job store "default"
+2026-09-19 20:07:26,527 INFO     apscheduler.scheduler :: Scheduler started
+2026-09-19 20:07:26,529 INFO     floatline.main :: APScheduler started - PID control loop every 60s (setpoint $1500.00)
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-09-19 20:07:29,527 INFO     apscheduler.executors.default :: Running job "Floatline PID control loop (trigger: interval[0:01:00], next run at: 2026-09-20 00:08:29 UTC)" (scheduled at 2026-09-20 00:07:29.521753+00:00)
+2026-09-19 20:07:30,200 INFO     floatline.tasks :: tick chk=3817.89 sav=5000.00 brk=8515.89 pid=3476.84 transfers=2
+2026-09-19 20:07:30,202 INFO     apscheduler.executors.default :: Job "Floatline PID control loop (trigger: interval[0:01:00], next run at: 2026-09-20 00:08:29 UTC)" executed successfully
+2026-09-19 20:08:29,527 INFO     apscheduler.executors.default :: Running job "Floatline PID control loop (trigger: interval[0:01:00], next run at: 2026-09-20 00:09:29 UTC)" (scheduled at 2026-09-20 00:08:29.521753+00:00)
+2026-09-19 20:08:29,990 INFO     floatline.tasks :: tick chk=2021.53 sav=5000.00 brk=10312.25 pid=1796.36 transfers=2
+2026-09-19 20:08:29,992 INFO     apscheduler.executors.default :: Job "Floatline PID control loop (trigger: interval[0:01:00], next run at: 2026-09-20 00:09:29 UTC)" executed successfully
+2026-09-19 20:09:29,530 INFO     apscheduler.executors.default :: Running job "Floatline PID control loop (trigger: interval[0:01:00], next run at: 2026-09-20 00:10:29 UTC)" (scheduled at 2026-09-20 00:09:29.521753+00:00)
+2026-09-19 20:09:30,086 INFO     floatline.tasks :: tick chk=987.17 sav=5000.00 brk=11346.61 pid=1034.36 transfers=2
+2026-09-19 20:09:30,087 INFO     apscheduler.executors.default :: Job "Floatline PID control loop (trigger: interval[0:01:00], next run at: 2026-09-20 00:10:29 UTC)" executed successfully

@@ -1,0 +1,80 @@
+name: floatline
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.11.2-pg15
+    container_name: floatline_timescaledb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: floatlinedb
+      # Correct env var for the timescale/timescaledb image. The previous
+      # TIMESCALE_TELEMETRY_DISABLE key is not recognised and was silently
+      # ignored. NOTE: this only applies when the data volume is first created.
+      TIMESCALEDB_TELEMETRY: "off"
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./initdb/01-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d floatlinedb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  fastapi_web:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: floatline_fastapi
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    env_file:
+      - ./.env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@timescaledb:5432/floatlinedb
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    container_name: floatline_caddy
+    depends_on:
+      - fastapi_web
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - frontend_dist:/usr/share/caddy:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Static Astro build. The image is built once, then a short-lived container
+  # publishes the compiled assets into `frontend_dist`, which Caddy serves. No
+  # Node runtime survives into production.
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: floatline-frontend:latest
+    container_name: floatline_frontend
+    command: ["sh", "-c", "rm -rf /srv/* && cp -r /app/dist/. /srv/"]
+    volumes:
+      - frontend_dist:/srv
+    restart: "no"
+
+volumes:
+  timescaledb_data:
+  frontend_dist:
+  caddy_data:
+  caddy_config:

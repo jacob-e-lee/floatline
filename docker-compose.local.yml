@@ -1,0 +1,29 @@
+# ---------------------------------------------------------------------------
+# Floatline - LOCAL Docker override.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+#
+# Changes vs. the base compose file:
+#   1. Caddy uses Caddyfile.local (plain HTTP on :8080, no ACME / no TLS) and
+#      stops publishing :80/:443 so it cannot collide with anything local.
+#   2. Ports 5432 and 8000 stay published by the base file, which is what the
+#      smoke test and your browser use.
+#
+# What actually prevents ACME traffic in local mode:
+#   `auto_https off` in Caddyfile.local, plus a `http://` site address.
+# The official caddy image already sets XDG_DATA_HOME=/data, so no extra env
+# vars are needed here.
+#
+# NOTE: compose REPLACES list values (ports, volumes) rather than merging them,
+# so every volume/port that must survive is repeated in full below.
+# ---------------------------------------------------------------------------
+
+services:
+  caddy:
+    volumes:
+      - ./Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - frontend_dist:/usr/share/caddy:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "8080:8080"

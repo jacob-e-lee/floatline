@@ -1,0 +1,5 @@
+# Floatline - development / test dependencies (NOT installed in the Docker image)
+#
+#   py -3.14 -m pip install -r requirements.txt -r requirements-dev.txt
+#
+pytest>=8.0.0

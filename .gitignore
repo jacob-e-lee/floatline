@@ -1,0 +1,91 @@
+# =========================
+# 1. Environment & Secrets
+# =========================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# =========================
+# 2. Python (Backend)
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+.venv/
+env/
+.env_venv/
+
+# =========================
+# 3. Node.js & Astro (Frontend)
+# =========================
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+pnpm-debug.log
+
+# Astro specific build output
+dist/
+.astro/
+.vercel/
+
+# =========================
+# 4. Celery & Redis
+# =========================
+celerybeat-schedule
+celerybeat.pid
+
+# =========================
+# 5. OS & Editor Configs
+# =========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# 6. Database / Volumes (Docker)
+# =========================
+postgres_data/
+redis_data/
+
+# =========================
+# 7. Test & Runtime Artifacts
+# =========================
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
+backend/uvicorn.*
